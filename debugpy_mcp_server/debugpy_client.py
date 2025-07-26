@@ -3,10 +3,12 @@ Debugpy client wrapper for managing debugging sessions.
 """
 
 import json
-import socket
+import subprocess
 import time
 import threading
 import uuid
+import os
+import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 import logging
 
@@ -14,18 +16,18 @@ from .models import (
     DebugSession, Breakpoint, StackFrame, Variable, 
     ExpressionResult, SourceLocation, ProcessInfo
 )
+from .dap_client import DAPClient
 
 logger = logging.getLogger(__name__)
 
 
 class DebugpyClient:
-    """Client for communicating with debugpy debug adapters."""
+    """Client for communicating with debugpy debug adapters using proper DAP."""
     
     def __init__(self):
         self.sessions: Dict[str, DebugSession] = {}
-        self.connections: Dict[str, socket.socket] = {}
+        self.dap_clients: Dict[str, DAPClient] = {}
         self.breakpoints: Dict[str, List[Breakpoint]] = {}
-        self.sequence_number = 1
         self.event_handlers = []
         
     def create_session(self, host: str = "localhost", port: int = 5678, timeout: int = 30) -> str:
@@ -53,32 +55,22 @@ class DebugpyClient:
         session = self.sessions[session_id]
         
         try:
-            # Create socket connection
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(30)
-            sock.connect((session.host, session.port))
+            # Create DAP client
+            dap_client = DAPClient()
             
-            self.connections[session_id] = sock
-            
-            # Initialize debug adapter protocol
-            self._send_request(session_id, "initialize", {
-                "clientID": "debugpy-mcp-server",
-                "clientName": "Debugpy MCP Server",
-                "adapterID": "python",
-                "pathFormat": "path",
-                "linesStartAt1": True,
-                "columnsStartAt1": True,
-                "supportsVariableType": True,
-                "supportsVariablePaging": True,
-                "supportsRunInTerminalRequest": False
-            })
-            
-            # Update session status
-            session.is_connected = True
-            session.status = "connected"
-            
-            logger.info(f"Connected to debug session {session_id}")
-            return True
+            # Connect to debugpy
+            if dap_client.connect(session.host, session.port, 30):
+                self.dap_clients[session_id] = dap_client
+                
+                # Update session status
+                session.is_connected = True
+                session.status = "connected"
+                
+                logger.info(f"Connected to debug session {session_id}")
+                return True
+            else:
+                session.status = "connection_failed"
+                return False
             
         except Exception as e:
             logger.error(f"Failed to connect to session {session_id}: {e}")
@@ -91,9 +83,9 @@ class DebugpyClient:
             return False
             
         try:
-            if session_id in self.connections:
-                self.connections[session_id].close()
-                del self.connections[session_id]
+            if session_id in self.dap_clients:
+                self.dap_clients[session_id].disconnect()
+                del self.dap_clients[session_id]
             
             session = self.sessions[session_id]
             session.is_connected = False
@@ -168,11 +160,14 @@ class DebugpyClient:
     
     def continue_execution(self, session_id: str) -> bool:
         """Continue program execution."""
+        if session_id not in self.dap_clients:
+            logger.error(f"No DAP client for session {session_id}")
+            return False
+            
         try:
-            response = self._send_request(session_id, "continue", {
-                "threadId": 1  # Assume main thread
-            })
-            return response and response.get("success", False)
+            dap_client = self.dap_clients[session_id]
+            response = dap_client.continue_execution()
+            return response and response.get("success", True)
             
         except Exception as e:
             logger.error(f"Failed to continue execution: {e}")
@@ -180,11 +175,13 @@ class DebugpyClient:
     
     def step_over(self, session_id: str) -> bool:
         """Step over the current line."""
+        if session_id not in self.dap_clients:
+            return False
+            
         try:
-            response = self._send_request(session_id, "next", {
-                "threadId": 1
-            })
-            return response and response.get("success", False)
+            dap_client = self.dap_clients[session_id]
+            response = dap_client.step_over()
+            return response and response.get("success", True)
             
         except Exception as e:
             logger.error(f"Failed to step over: {e}")
@@ -192,11 +189,13 @@ class DebugpyClient:
     
     def step_into(self, session_id: str) -> bool:
         """Step into the current function call."""
+        if session_id not in self.dap_clients:
+            return False
+            
         try:
-            response = self._send_request(session_id, "stepIn", {
-                "threadId": 1
-            })
-            return response and response.get("success", False)
+            dap_client = self.dap_clients[session_id]
+            response = dap_client.step_into()
+            return response and response.get("success", True)
             
         except Exception as e:
             logger.error(f"Failed to step into: {e}")
@@ -204,11 +203,13 @@ class DebugpyClient:
     
     def step_out(self, session_id: str) -> bool:
         """Step out of the current function."""
+        if session_id not in self.dap_clients:
+            return False
+            
         try:
-            response = self._send_request(session_id, "stepOut", {
-                "threadId": 1
-            })
-            return response and response.get("success", False)
+            dap_client = self.dap_clients[session_id]
+            response = dap_client.step_out()
+            return response and response.get("success", True)
             
         except Exception as e:
             logger.error(f"Failed to step out: {e}")
