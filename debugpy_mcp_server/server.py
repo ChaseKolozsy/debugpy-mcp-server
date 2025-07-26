@@ -13,10 +13,6 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.session import RequestContext
-from mcp.types import (
-    Resource, Tool, TextContent, ImageContent, EmbeddedResource
-)
 
 from .debugpy_client import DebugpyClient
 from .models import (

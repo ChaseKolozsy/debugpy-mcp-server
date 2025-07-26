@@ -8,6 +8,6 @@ __version__ = "1.0.0"
 __author__ = "aXaTT Team"
 __email__ = "team@axatt.dev"
 
-from .server import DebugpyMCPServer
+from . import server
 
-__all__ = ["DebugpyMCPServer"] 
+__all__ = ["server"] 
