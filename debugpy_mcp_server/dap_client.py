@@ -56,23 +56,9 @@ class DAPClient:
             })
             
             if response and response.get("success"):
-                # Send launch/attach request
-                launch_response = self._send_request("attach", {
-                    "name": "Python: Attach",
-                    "type": "python",
-                    "request": "attach",
-                    "connect": {
-                        "host": host,
-                        "port": port
-                    },
-                    "pathMappings": [],
-                    "justMyCode": False
-                })
-                
-                if launch_response and launch_response.get("success"):
-                    # Send configuration done
-                    config_response = self._send_request("configurationDone", {})
-                    return config_response and config_response.get("success", True)
+                # Send configuration done - debugpy handles attach automatically when initialized
+                config_response = self._send_request("configurationDone", {})
+                return config_response and config_response.get("success", True)
                     
             return False
             
