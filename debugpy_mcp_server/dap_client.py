@@ -25,6 +25,8 @@ class DAPClient:
         self.is_connected = False
         self.receive_thread: Optional[threading.Thread] = None
         self.lock = threading.Lock()
+        self.threads: List[Dict[str, Any]] = []
+        self.main_thread_id: Optional[int] = None
         
     def connect(self, host: str, port: int, timeout: int = 30) -> bool:
         """Connect to the debug adapter."""
@@ -58,7 +60,23 @@ class DAPClient:
             if response and response.get("success"):
                 # Send configuration done - debugpy handles attach automatically when initialized
                 config_response = self._send_request("configurationDone", {})
-                return config_response and config_response.get("success", True)
+                if config_response and config_response.get("success", True):
+                    # Get available threads to have valid thread IDs for execution control
+                    threads_response = self.get_threads()
+                    if threads_response and threads_response.get("success"):
+                        self.threads = threads_response.get("body", {}).get("threads", [])
+                        # Find the main thread (usually the first one)
+                        if self.threads:
+                            self.main_thread_id = self.threads[0].get("id", 1)
+                        else:
+                            self.main_thread_id = 1  # fallback
+                        logger.info(f"Connected with {len(self.threads)} threads, main thread ID: {self.main_thread_id}")
+                        return True
+                    else:
+                        # If threads request fails, still try to use default thread ID
+                        self.main_thread_id = 1
+                        logger.warning("Could not get threads list, using default thread ID 1")
+                        return True
                     
             return False
             
@@ -98,24 +116,38 @@ class DAPClient:
             "breakpoints": breakpoints
         })
     
-    def continue_execution(self, thread_id: int = 1) -> Dict[str, Any]:
+    def continue_execution(self, thread_id: Optional[int] = None) -> Dict[str, Any]:
         """Continue execution."""
-        return self._send_request("continue", {"threadId": thread_id})
+        if thread_id is None:
+            thread_id = self.main_thread_id or 1
+        
+        logger.info(f"Sending continue command with thread_id: {thread_id}")
+        response = self._send_request("continue", {"threadId": thread_id})
+        logger.info(f"Continue response: {response}")
+        return response
     
-    def step_over(self, thread_id: int = 1) -> Dict[str, Any]:
+    def step_over(self, thread_id: Optional[int] = None) -> Dict[str, Any]:
         """Step over the current line."""
+        if thread_id is None:
+            thread_id = self.main_thread_id or 1
         return self._send_request("next", {"threadId": thread_id})
     
-    def step_into(self, thread_id: int = 1) -> Dict[str, Any]:
+    def step_into(self, thread_id: Optional[int] = None) -> Dict[str, Any]:
         """Step into the current function call."""
+        if thread_id is None:
+            thread_id = self.main_thread_id or 1
         return self._send_request("stepIn", {"threadId": thread_id})
     
-    def step_out(self, thread_id: int = 1) -> Dict[str, Any]:
+    def step_out(self, thread_id: Optional[int] = None) -> Dict[str, Any]:
         """Step out of the current function."""
+        if thread_id is None:
+            thread_id = self.main_thread_id or 1
         return self._send_request("stepOut", {"threadId": thread_id})
     
-    def get_stack_trace(self, thread_id: int = 1) -> Dict[str, Any]:
+    def get_stack_trace(self, thread_id: Optional[int] = None) -> Dict[str, Any]:
         """Get the stack trace."""
+        if thread_id is None:
+            thread_id = self.main_thread_id or 1
         return self._send_request("stackTrace", {"threadId": thread_id})
     
     def get_scopes(self, frame_id: int) -> Dict[str, Any]:
