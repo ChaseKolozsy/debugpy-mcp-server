@@ -572,6 +572,8 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Debugpy MCP Server")
+    parser.add_argument("--mode", choices=["stdio", "http"], default="stdio",
+                       help="Server mode (default: stdio)")
     parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--log-level", default="INFO", help="Logging level")
@@ -581,10 +583,13 @@ def main():
     # Set logging level
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
     
-    logger.info(f"Starting Debugpy MCP Server on {args.host}:{args.port}")
-    
-    # Run the server
-    mcp.run(host=args.host, port=args.port)
+    if args.mode == "stdio":
+        # Run as stdio MCP server for MCP clients
+        mcp.run()
+    else:
+        # Run as HTTP server
+        logger.info(f"Starting Debugpy MCP Server on {args.host}:{args.port}")
+        mcp.run(host=args.host, port=args.port)
 
 if __name__ == "__main__":
     main() 
